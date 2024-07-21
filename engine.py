@@ -26,11 +26,7 @@ random.seed(68127)
 
 class KuhnDeck:
     def __init__(self):
-<<<<<<< HEAD
         self.cards = list(range(100))
-=======
-        self.cards = list(range(101))
->>>>>>> b31ee90 (3 cards to 100 cards)
         random.shuffle(self.cards)
         self.index = 0
     
