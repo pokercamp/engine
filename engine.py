@@ -528,9 +528,7 @@ class Player():
                 
                 if action in legal_actions:
                     return action()
-                print('response obj: ', response_obj)
-                print('action: ', action)
-                game_log.append(f'{self.name} attempted illegal {action.__repr__()}')
+                game_log.append(f'{self.name} attempted illegal {action.__name__}')
             except socket.timeout:
                 error_message = f'{self.name} ran out of time'
                 game_log.append(error_message)
