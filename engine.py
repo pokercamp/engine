@@ -75,6 +75,7 @@ class RaiseAction(namedtuple('RaiseAction', [])):
     def __repr__(self):
         return 'Raise'
 
+
 TerminalState = namedtuple('TerminalState', ['deltas', 'previous_state'])
 
 STREET_NAMES = ['Flop']
@@ -124,6 +125,7 @@ def message(type, **kwargs):
 class RoundState(namedtuple('_RoundState', ['turn_number', 'street', 'pips', 'stacks', 'hands', 'deck', 'action_history', 'previous_state'])):
     @staticmethod
     def new():
+<<<<<<< HEAD
         '''
         Returns a RoundState representing the start of a Leduc game.
         '''
@@ -141,6 +143,13 @@ class RoundState(namedtuple('_RoundState', ['turn_number', 'street', 'pips', 'st
             action_history = [],
             previous_state = None,
         )
+=======
+        deck = KuhnDeck()
+        hands = [deck.deal(), deck.deal()]
+        pips = [ANTE, ANTE]
+        stacks = [STARTING_STACK - ANTE, STARTING_STACK - ANTE]
+        return RoundState(0, 0, pips, stacks, hands, deck, [], None)
+>>>>>>> 0d3ef7f (cleanups to engine.py)
     
     def showdown(self):
         hands = self.hands
@@ -300,6 +309,7 @@ class RoundState(namedtuple('_RoundState', ['turn_number', 'street', 'pips', 'st
             )
 
             if self.turn_number == 0:
+<<<<<<< HEAD
                 return state
             elif self.turn_number == 1:  # check-check
                 assert isinstance(self.action_history[-1], CheckAction)
@@ -325,6 +335,42 @@ class RoundState(namedtuple('_RoundState', ['turn_number', 'street', 'pips', 'st
         
         else:
             raise NotImplementedError(f'action ({action}) of unknown type')
+=======
+                # First player checks, continue to second player
+                return RoundState(self.turn_number + 1, self.street, self.pips, self.stacks, self.hands, self.deck, self.action_history + [action], self)
+            elif self.turn_number == 1:
+                if self.pips[0] == self.pips[1]:
+                    # Both players checked, go to showdown
+                    return RoundState(self.turn_number + 1, self.street, self.pips, self.stacks, self.hands, self.deck, self.action_history + [action], self).proceed_street()
+                else:
+                    # Second player folds after a bet
+                    return TerminalState(
+                        [self.pips[1], -self.pips[1]],
+                        RoundState(self.turn_number + 1, self.street, self.pips, self.stacks, self.hands, self.deck, self.action_history + [action], self),
+                    )
+            else:
+                # This is check-bet-fold
+                assert(self.turn_number == 2)
+                return TerminalState(
+                    [-self.pips[0], self.pips[0]],
+                    RoundState(self.turn_number + 1, self.street, self.pips, self.stacks, self.hands, self.deck, self.action_history + [action], self),
+                )
+        
+        elif isinstance(action, UpAction):
+            new_pips = list(self.pips)
+            new_stacks = list(self.stacks)
+            if self.pips[0] == self.pips[1]:
+                # This is a bet
+                new_pips[active] += BET_SIZE
+                new_stacks[active] -= BET_SIZE
+                return RoundState(self.turn_number + 1, self.street, new_pips, new_stacks, self.hands, self.deck, self.action_history + [action], self)
+            else:
+                # This is a call
+                new_pips[active] = new_pips[inactive]
+                new_stacks[active] -= (new_pips[active] - self.pips[active])
+                # Always go to showdown after a call
+                return RoundState(self.turn_number + 1, self.street, new_pips, new_stacks, self.hands, self.deck, self.action_history + [action], self).proceed_street()
+>>>>>>> 0d3ef7f (cleanups to engine.py)
 
 class Player():
     '''
