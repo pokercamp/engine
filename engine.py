@@ -19,7 +19,7 @@ import sys
 import os
 
 sys.path.append(os.getcwd())
-from .config import *
+from config import *
 
 import random
 
@@ -152,6 +152,8 @@ class RoundState(namedtuple('_RoundState', ['turn_number', 'street', 'pips', 'st
 >>>>>>> 0d3ef7f (cleanups to engine.py)
     
     def showdown(self):
+        assert self.pips[0] == self.pips[1]
+        
         hands = self.hands
         street = self.street
         assert(street == 1)
@@ -239,6 +241,8 @@ class RoundState(namedtuple('_RoundState', ['turn_number', 'street', 'pips', 'st
         that state by calling state.proceed() because proceed() will skip over it. You'll
         only ever see it if you look in state.previous_state.
         '''
+        assert self.pips[0] == self.pips[1]
+        
         if self.street == 0:
             return RoundState(
                 turn_number = 0,
