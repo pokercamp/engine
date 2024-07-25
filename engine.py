@@ -75,10 +75,7 @@ class RaiseAction(namedtuple('RaiseAction', [])):
     def __repr__(self):
         return 'Raise'
 
-<<<<<<< HEAD
 
-=======
->>>>>>> b4a40fc (initial commit for leduc logic; rebase merge some core-engine changes)
 TerminalState = namedtuple('TerminalState', ['deltas', 'previous_state'])
 
 STREET_NAMES = ['Flop']
@@ -239,11 +236,8 @@ class RoundState(namedtuple('_RoundState', ['turn_number', 'street', 'pips', 'st
         that state by calling state.proceed() because proceed() will skip over it. You'll
         only ever see it if you look in state.previous_state.
         '''
-<<<<<<< HEAD
         assert self.pips[0] == self.pips[1]
         
-=======
->>>>>>> b4a40fc (initial commit for leduc logic; rebase merge some core-engine changes)
         if self.street == 0:
             return RoundState(
                 turn_number = 0,
@@ -517,18 +511,13 @@ class Player():
                                 elif action_verb == 'K':
                                     action = CheckAction()
                                 elif action_verb == 'R':
-<<<<<<< HEAD
+
                                     action = RaiseAction()
                                     # if 'amount' in response_obj['action']:
                                     #     action = RaiseAction(response_obj['action']['amount'])
                                     # else:
                                     #     raise ValueError("Raise action must specify an amount")
-=======
-                                    if 'amount' in response_obj['action']:
-                                        action = RaiseAction(response_obj['action']['amount'])
-                                    else:
-                                        raise ValueError("Raise action must specify an amount")
->>>>>>> b4a40fc (initial commit for leduc logic; rebase merge some core-engine changes)
+
                                 else:
                                     raise ValueError(f'Invalid action verb: {action_verb}')
                             else:
@@ -541,7 +530,9 @@ class Player():
                 
                 if action in legal_actions:
                     return action()
-                game_log.append(f'{self.name} attempted illegal {action.__name__}')
+                print('response obj: ', response_obj)
+                print('action: ', action)
+                game_log.append(f'{self.name} attempted illegal {action.__repr__()}')
             except socket.timeout:
                 error_message = f'{self.name} ran out of time'
                 game_log.append(error_message)
