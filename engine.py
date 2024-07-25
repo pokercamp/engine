@@ -19,7 +19,7 @@ import sys
 import os
 
 sys.path.append(os.getcwd())
-from config import *
+from .config import *
 
 import random
 
@@ -517,6 +517,7 @@ class Player():
                             continue
                 else:
                     print(f'WARN Bad message format (expected json or list of json): {response}')
+                    print(f'WARN Bad message format (expected json or list of json): {response}')
                 
                 if action in legal_actions:
                     return action()
@@ -538,6 +539,7 @@ class Player():
         return CheckAction() if CheckAction in legal_actions else FoldAction()
 
 class Match():
+class Match():
     '''
     Manages logging and the high-level game procedure.
     '''
@@ -557,6 +559,7 @@ class Match():
         
         self.log = ['Poker Camp Game Engine - ' + PLAYER_1_NAME + ' vs ' + PLAYER_2_NAME]
 
+    def send_round_state(self, players, round_state):
     def send_round_state(self, players, round_state):
         '''
         Incorporates RoundState information into the game log and player messages.
