@@ -5,6 +5,7 @@ Poker Camp Game Engine
 Derived from: 6.176 MIT Pokerbots Game Engine at mitpokerbots/engine
 '''
 import argparse
+import traceback
 from collections import namedtuple
 from threading import Thread
 from queue import Queue
@@ -24,9 +25,9 @@ import random
 
 random.seed(68127)
 
-class KuhnDeck:
+class LeducDeck:
     def __init__(self):
-        self.cards = [0, 1, 2]
+        self.cards = [0, 1, 2, 0, 1, 2]
         random.shuffle(self.cards)
         self.index = 0
     
@@ -36,27 +37,49 @@ class KuhnDeck:
         card = self.cards[self.index]
         self.index += 1
         return card
+    
+    def peek(self, street):
+        if street >= len(self.cards):
+            raise ValueError("Index out of range")
+        return self.cards[2:street+2]
 
-class DownAction(namedtuple('DownAction', [])):
+class FoldAction(namedtuple('FoldAction', [])):
     def __hash__(self):
-        return hash('DownAction')
+        return hash('FoldAction')
     def __eq__(self, other):
-        return isinstance(other, DownAction)
+        return isinstance(other, FoldAction)
     def __repr__(self):
-        return 'Down'
+        return 'Fold'
     
-class UpAction(namedtuple('UpAction', [])):
+class CallAction(namedtuple('CallAction', [])):
     def __hash__(self):
-        return hash('UpAction')
+        return hash('CallAction')
     def __eq__(self, other):
-        return isinstance(other, UpAction)
+        return isinstance(other, CallAction)
     def __repr__(self):
-        return 'Up'
+        return 'Call'
     
+class CheckAction(namedtuple('CheckAction', [])):
+    def __hash__(self):
+        return hash('CheckAction')
+    def __eq__(self, other):
+        return isinstance(other, CheckAction)
+    def __repr__(self):
+        return 'Check'
+    
+class RaiseAction(namedtuple('RaiseAction', [])):
+    def __hash__(self):
+        return hash('RaiseAction')
+    def __eq__(self, other):
+        return isinstance(other, RaiseAction)
+    def __repr__(self):
+        return 'Raise'
+
+
 TerminalState = namedtuple('TerminalState', ['deltas', 'previous_state'])
 
-STREET_NAMES = []
-DECODE = {'U': UpAction, 'D': DownAction}
+STREET_NAMES = ['Flop']
+DECODE = {'F': FoldAction, 'C': CallAction, 'K': CheckAction, 'R': RaiseAction}
 CCARDS = lambda card: '{}'.format(card)
 PCARDS = lambda card: '[{}]'.format(card)
 PVALUE = lambda name, value: f', {name} ({value:+d})'
@@ -102,22 +125,48 @@ def message(type, **kwargs):
 class RoundState(namedtuple('_RoundState', ['turn_number', 'street', 'pips', 'stacks', 'hands', 'deck', 'action_history', 'previous_state'])):
     @staticmethod
     def new():
-        deck = KuhnDeck()
+        '''
+        Returns a RoundState representing the start of a Leduc game.
+        '''
+        deck = LeducDeck()
         hands = [deck.deal(), deck.deal()]
         pips = [ANTE, ANTE]
         stacks = [STARTING_STACK - ANTE, STARTING_STACK - ANTE]
-        return RoundState(0, 0, pips, stacks, hands, deck, [], None)
+        return RoundState(
+            turn_number = 0,
+            street = 0,
+            pips = pips,
+            stacks = stacks,
+            hands = hands,
+            deck = deck,
+            action_history = [],
+            previous_state = None,
+        )
     
     def showdown(self):
+        assert self.pips[0] == self.pips[1]
+        
         hands = self.hands
-        pips = self.pips
-        
-        winner = 0 if hands[0] > hands[1] else 1
-        loser = 1 - winner
-        
+        street = self.street
+        assert(street == 1)
+        community = self.deck.peek(street)
+
+        if hands[0] == community:
+            winner = 0
+        elif hands[1] == community:
+            winner = 1
+        elif hands[0] > hands[1]:
+            winner = 0
+        elif hands[1] > hands[0]:
+            winner = 1
+        else:
+            winner = None #Tie 
+
         deltas = [0, 0]
-        deltas[winner] = pips[loser]
-        deltas[loser] = -pips[loser]
+        if winner is not None:
+            loser = 1 - winner
+            deltas[winner] = self.pips[loser]
+            deltas[loser] = -self.pips[loser]
         
         return TerminalState(deltas, self)
     
@@ -130,54 +179,160 @@ class RoundState(namedtuple('_RoundState', ['turn_number', 'street', 'pips', 'st
         return {}
 
     def legal_actions(self):
-        return {UpAction, DownAction}
+        '''
+        Returns a set which corresponds to the active player's legal moves.
+        '''
+        active = self.turn_number % 2
+        call_cost = self.pips[1-active] - self.pips[active]
+        # print('cont cost: ', call_cost)
+        if call_cost == 0:
+            if self.stacks[0] == 0: # P0 is all-in
+                # consider whether this should be unreachable / return empty set
+                return {CheckAction}
+            elif self.stacks[1] == 0: # P1 is all-in
+                # consider whether this should be unreachable / return empty set
+                return {CheckAction}
+            else:
+                return {CheckAction, RaiseAction}
+        else: # call_cost > 0
+            if self.stacks[1-active] == 0: # opponent went all-in, so we can't re-raise
+                return {FoldAction, CallAction}
+            if call_cost >= self.stacks[active]: # calling would put us all-in, so we can't re-raise
+                return {FoldAction, CallAction}
+            else:
+                # RaiseAction includes an all-in shove less than the default/minimum bet
+                return {FoldAction, CallAction, RaiseAction}
 
     def raise_bounds(self):
-        return (BET_SIZE, BET_SIZE)  # Not used in Kuhn poker, but kept for compatibility
+        '''
+        Returns the legal raise size.
+        '''
+        active = self.turn_number % 2
+        if self.street == 0:
+            default_bet_amount = BET_SIZE
+        else: #self.street == 1
+            default_bet_amount = BET_SIZE*2
+        call_cost = self.pips[1-active] - self.pips[active]
+
+        assert call_cost <= self.stacks[active] # should have been enforced by previous state's legal_actions
+        if call_cost == self.stacks[active]:
+            return 0
+
+        max_contribution = min(
+            default_bet_amount, # default bet
+            self.stacks[1-active], # put our opponent all-in
+            self.stacks[active] - call_cost, # go all-in; positive because of above assertion
+        )
+        # min_contribution = min(default_bet_amount, max_contribution)
+        return max_contribution
 
     def proceed_street(self):
-        return self.showdown()  # Kuhn poker is single street
+        '''
+        Resets the players' pips and advances the game tree to the next round of betting.
+
+        Current logic: there's a final RoundState at the end of the prev_street, and then
+        a different RoundState to begin the next_street. This is weird because the
+        end-of-prev_street RoundState has no actions to take. You should never encounter
+        that state by calling state.proceed() because proceed() will skip over it. You'll
+        only ever see it if you look in state.previous_state.
+        '''
+        assert self.pips[0] == self.pips[1]
+        
+        if self.street == 0:
+            return RoundState(
+                turn_number = 0,
+                street = 1,
+                pips = self.pips,
+                stacks = self.stacks,
+                hands = self.hands,
+                deck = self.deck,
+                action_history = self.action_history,
+                previous_state = self,
+            )
+        else:
+            return self.showdown()
 
     def proceed(self, action):
         active = self.turn_number % 2
         inactive = 1 - active
+        new_pips = list(self.pips)
+        new_stacks = list(self.stacks)
         
-        if isinstance(action, DownAction):
-            if self.turn_number == 0:
-                # First player checks, continue to second player
-                return RoundState(self.turn_number + 1, self.street, self.pips, self.stacks, self.hands, self.deck, self.action_history + [action], self)
-            elif self.turn_number == 1:
-                if self.pips[0] == self.pips[1]:
-                    # Both players checked, go to showdown
-                    return RoundState(self.turn_number + 1, self.street, self.pips, self.stacks, self.hands, self.deck, self.action_history + [action], self).proceed_street()
-                else:
-                    # Second player folds after a bet
-                    return TerminalState(
-                        [self.pips[1], -self.pips[1]],
-                        RoundState(self.turn_number + 1, self.street, self.pips, self.stacks, self.hands, self.deck, self.action_history + [action], self),
-                    )
-            else:
-                # This is check-bet-fold
-                assert(self.turn_number == 2)
-                return TerminalState(
-                    [-self.pips[0], self.pips[0]],
-                    RoundState(self.turn_number + 1, self.street, self.pips, self.stacks, self.hands, self.deck, self.action_history + [action], self),
+        if isinstance(action, FoldAction):
+            deltas = [0, 0]
+            winner = inactive
+            loser = active
+            deltas[winner] = self.pips[loser]
+            deltas[loser] = -self.pips[loser]
+
+            return TerminalState(
+                deltas,
+                RoundState(
+                    turn_number = self.turn_number + 1,
+                    street = self.street,
+                    pips = self.pips,
+                    stacks = self.stacks,
+                    hands = self.hands,
+                    deck = self.deck,
+                    action_history = self.action_history + [FoldAction()],
+                    previous_state = self,
                 )
+            )
         
-        elif isinstance(action, UpAction):
-            new_pips = list(self.pips)
-            new_stacks = list(self.stacks)
-            if self.pips[0] == self.pips[1]:
-                # This is a bet
-                new_pips[active] += BET_SIZE
-                new_stacks[active] -= BET_SIZE
-                return RoundState(self.turn_number + 1, self.street, new_pips, new_stacks, self.hands, self.deck, self.action_history + [action], self)
-            else:
-                # This is a call
-                new_pips[active] = new_pips[inactive]
-                new_stacks[active] -= (new_pips[active] - self.pips[active])
-                # Always go to showdown after a call
-                return RoundState(self.turn_number + 1, self.street, new_pips, new_stacks, self.hands, self.deck, self.action_history + [action], self).proceed_street()
+        elif isinstance(action, CallAction):
+            call_cost = new_pips[inactive] - new_pips[active]
+            new_stacks[active] -= call_cost
+            new_pips[active] += call_cost
+            state = RoundState(
+                turn_number = self.turn_number + 1,
+                street = self.street,
+                pips = new_pips,
+                stacks = new_stacks,
+                hands = self.hands,
+                deck = self.deck,
+                action_history = self.action_history + [CallAction()],
+                previous_state = self,
+            )
+            return state.proceed_street()
+        
+        elif isinstance(action, CheckAction):
+            state = RoundState(
+                turn_number = self.turn_number + 1,
+                street = self.street,
+                pips = self.pips,
+                stacks = self.stacks,
+                hands = self.hands,
+                deck = self.deck,
+                action_history = self.action_history + [CheckAction()],
+                previous_state = self,
+            )
+
+            if self.turn_number == 0:
+                return state
+            elif self.turn_number == 1:  # check-check
+                assert isinstance(self.action_history[-1], CheckAction)
+                return state.proceed_street()
+            
+            raise ValueError(f'proceeded with CheckAction on turn {self.turn_number}, expected 0 or 1')
+        
+        elif isinstance(action, RaiseAction):
+            # only one size of raise in this game; self.raise_bounds() calculates it
+            contribution = self.raise_bounds() + (self.pips[inactive] - self.pips[active])
+            new_stacks[active] -= contribution
+            new_pips[active] += contribution
+            return RoundState(
+                turn_number = self.turn_number + 1,
+                street = self.street,
+                pips = new_pips,
+                stacks = new_stacks,
+                hands = self.hands,
+                deck = self.deck,
+                action_history = self.action_history + [RaiseAction()],
+                previous_state = self,
+            )
+        
+        else:
+            raise NotImplementedError(f'action ({action}) of unknown type')
 
 class Player():
     '''
@@ -245,7 +400,7 @@ class Player():
                     port = server_socket.getsockname()[1]
                     proc = subprocess.Popen(
                         self.commands['run'] + [str(port)],
-                        stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                        # stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                         cwd=self.path,
                     )
                     self.bot_subprocess = proc
@@ -282,16 +437,19 @@ class Player():
                 self.append(message('goodbye'))
                 self.query(None, None, wait=False)
                 self.socketfile.close()
+
             except socket.timeout:
                 print('Timed out waiting for', self.name, 'to disconnect')
+
             except OSError:
                 print('Could not close socket connection with', self.name)
+       
         if self.bot_subprocess is not None:
             try:
                 outs, _ = self.bot_subprocess.communicate(timeout=CONNECT_TIMEOUT)
                 self.bytes_queue.put(outs)
             except subprocess.TimeoutExpired:
-                print('Timed out waiting for', self.name, 'to quit')
+                print(f'Timed out waiting for {self.name} to quit')
                 self.bot_subprocess.kill()
                 outs, _ = self.bot_subprocess.communicate()
                 self.bytes_queue.put(outs)
@@ -326,6 +484,9 @@ class Player():
                 if not wait:
                     return None
                 response = self.socketfile.readline().strip()
+                # print(f"Raw response from {self.name}: {response}")  # Debug print
+                # if not response:
+                #     raise ValueError("Empty response from player")
                 end_time = time.perf_counter()
                 self.response_log.append(response)
                 if ENFORCE_GAME_CLOCK:
@@ -335,36 +496,45 @@ class Player():
                 
                 action = None
                 
-                if (len(response) > 0
-                    and (response[0] == '[' or response[0] == '{')
-                ):
+                if len(response) > 0 and (response[0] == '[' or response[0] == '{'):
                     # okay to accept a single json object
                     if response[0] == '{':
                         response = f'[{response}]'
-                    for response in json.loads(response):
+                    for response_obj in json.loads(response):
                         try:
-                            match response['type']:
-                                case 'action':
-                                    match response['action']['verb']:
-                                        case 'U':
-                                            action = UpAction
-                                        case 'D':
-                                            action = DownAction
-                                        case _:
-                                            print(f'WARN Bad action verb: {response}')
-                                case _:
-                                    print(f"WARN Bad message type: {response}")
+                            if response_obj['type'] == 'action':
+                                action_verb = response_obj['action']['verb']
+                                if action_verb == 'F':
+                                    action = FoldAction()
+                                elif action_verb == 'C':
+                                    action = CallAction()
+                                elif action_verb == 'K':
+                                    action = CheckAction()
+                                elif action_verb == 'R':
+
+                                    action = RaiseAction()
+                                    # if 'amount' in response_obj['action']:
+                                    #     action = RaiseAction(response_obj['action']['amount'])
+                                    # else:
+                                    #     raise ValueError("Raise action must specify an amount")
+
+                                else:
+                                    raise ValueError(f'Invalid action verb: {action_verb}')
+                            else:
+                                raise ValueError(f"Invalid message type: {response_obj['type']}")
                         except KeyError as e:
-                            print(f'WARN Message missing required field "{e}": {response}')
+                            print(f'WARN Message missing required field "{e}": {response_obj}')
                             continue
                 else:
                     print(f'WARN Bad message format (expected json or list of json): {response}')
                 
                 if action in legal_actions:
                     return action()
-                game_log.append(self.name + ' attempted illegal ' + action.__name__)
+                print('response obj: ', response_obj)
+                print('action: ', action)
+                game_log.append(f'{self.name} attempted illegal {action.__repr__()}')
             except socket.timeout:
-                error_message = self.name + ' ran out of time'
+                error_message = f'{self.name} ran out of time'
                 game_log.append(error_message)
                 print(error_message)
                 self.game_clock = 0.
@@ -375,7 +545,7 @@ class Player():
                 self.game_clock = 0.
             except (IndexError, KeyError, ValueError):
                 game_log.append(self.name + ' response misformatted: ' + str(clause))
-        return DownAction() if DownAction in legal_actions else UpAction()
+        return CheckAction() if CheckAction in legal_actions else FoldAction()
 
 class Match():
     '''
@@ -400,6 +570,8 @@ class Match():
     def send_round_state(self, players, round_state):
         '''
         Incorporates RoundState information into the game log and player messages.
+
+        No-op if there's no new information to share.
         '''
         if round_state.street == 0 and round_state.turn_number == 0:
             for seat, player in enumerate(players):
@@ -407,43 +579,56 @@ class Match():
             for seat, player in enumerate(players):
                 self.log.append(f'{player.name} dealt {PCARDS(round_state.hands[seat])}')
                 player.append(message('info', info={
-                        'seat': seat,
-                        'hands': round_state.visible_hands(seat),
-                        'new_game': True,
+                    'seat': seat,
+                    'hands': round_state.visible_hands(seat),
+                    'new_game': True,
                 }))
-        elif round_state.street > 0 and round_state.turn_number == 1:
+        elif round_state.street == 1 and round_state.turn_number == 0:
             board = round_state.deck.peek(round_state.street)
             self.log.append(
-                STREET_NAMES[round_state.street - 3]
+                STREET_NAMES[round_state.street - 1]
                 + ' '
                 + PCARDS(board)
                 + ''.join(
-                    PVALUE(player.name, STARTING_STACK-round_state.stacks[seat])
+                    PVALUE(player.name, round_state.pips[seat])
                     for seat, player in enumerate(players)
                 )
             )
             for seat, player in enumerate(players):
-                player.append(messages('info', info = {
+                player.append(message('info', info={
                     'seat': seat,
-                    'hands': [round_state.visible_hands(seat), None],
+                    'hands': round_state.visible_hands(seat),
                     'board': board,
                 }))
 
-    def send_action(self, players, seat, action):
+    def send_action(self, action, *, players, seat, round_state, ):
         '''
         Incorporates action information into the game log and player messages.
         '''
-        if isinstance(action, UpAction):
-            phrasing = ' up'
-            code = 'U'
-        else:  # isinstance(action, DownAction)
-            phrasing = ' down'
-            code = 'D'
+        if isinstance(action, FoldAction):
+            phrasing = ' folds'
+            code = 'F'
+        elif isinstance(action, CallAction):
+            phrasing = ' calls'
+            code = 'C'
+        elif isinstance(action, CheckAction):
+            phrasing = ' checks'
+            code = 'K'
+        elif isinstance(action, RaiseAction):
+            phrasing = f' raises {round_state.raise_bounds()}'
+            code = f'R'
+        else:
+            raise ValueError(f"Unknown action type: {type(action)}")
+
         self.log.append(players[seat].name + phrasing)
         for player in players:
             player.append(message(
                 'action',
-                action = {'verb': code},
+                action =
+                    {'verb': code, 'amount': round_state.raise_bounds()}
+                    if isinstance(action, RaiseAction)
+                    else {'verb': code}
+                ,
                 seat = seat,
             ))
 
@@ -452,13 +637,15 @@ class Match():
         Incorporates TerminalState information into the game log and player messages.
         '''
         previous_state = round_state.previous_state
-        if round_state.previous_state.pips[0] == round_state.previous_state.pips[1]:
+
+        if previous_state.pips[0] == previous_state.pips[1]:
             for seat, player in enumerate(players):
                 self.log.append(f'{player.name} shows {PCARDS(previous_state.hands[seat])}')
                 player.append(message('info', info = {
                     'seat': seat,
                     'hands': previous_state.hands,
-                }))
+                })) # we could put a board here if street == 1, but meh
+        
         for seat, player in enumerate(players):
             self.log.append(f'{player.name} awarded {round_state.deltas[seat]:+d}')
             player.append(message(
@@ -471,13 +658,13 @@ class Match():
         while not isinstance(round_state, TerminalState):
             self.send_round_state(players, round_state)
             active = round_state.turn_number % 2
-            player = players[active]
-            action = player.query(
+            action = players[active].query(
                 round_state,
                 self.log,
             )
-            self.send_action(players, active, action)
+            self.send_action(action, players=players, seat=active, round_state=round_state)
             round_state = round_state.proceed(action)
+        
         self.send_terminal_state(players, round_state)
         for player, delta in zip(players, round_state.deltas):
             player.bankroll += delta
