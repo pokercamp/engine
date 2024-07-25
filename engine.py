@@ -539,7 +539,6 @@ class Player():
         return CheckAction() if CheckAction in legal_actions else FoldAction()
 
 class Match():
-class Match():
     '''
     Manages logging and the high-level game procedure.
     '''
