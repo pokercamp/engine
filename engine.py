@@ -367,7 +367,7 @@ class Player():
             else:
                 print(self.name, 'commands.json missing command')
         except FileNotFoundError:
-            print(self.name, 'commands.json not found - check PLAYER_PATH')
+            print(self.name, f'commands.json not found - check PLAYER_PATH={self.path}')
         except json.decoder.JSONDecodeError:
             print(self.name, 'commands.json misformatted')
         if self.commands is not None and len(self.commands['build']) > 0:
