@@ -522,7 +522,6 @@ class Player():
                             continue
                 else:
                     print(f'WARN Bad message format (expected json or list of json): {response}')
-                    print(f'WARN Bad message format (expected json or list of json): {response}')
                 
                 if action in legal_actions:
                     return action()
@@ -563,7 +562,6 @@ class Match():
         
         self.log = ['Poker Camp Game Engine - ' + PLAYER_1_NAME + ' vs ' + PLAYER_2_NAME]
 
-    def send_round_state(self, players, round_state):
     def send_round_state(self, players, round_state):
         '''
         Incorporates RoundState information into the game log and player messages.
