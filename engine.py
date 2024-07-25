@@ -19,7 +19,7 @@ import sys
 import os
 
 sys.path.append(os.getcwd())
-from .config import *
+from config import *
 
 import random
 
@@ -503,10 +503,11 @@ class Player():
                                 elif action_verb == 'K':
                                     action = CheckAction()
                                 elif action_verb == 'R':
-                                    if 'amount' in response_obj['action']:
-                                        action = RaiseAction(response_obj['action']['amount'])
-                                    else:
-                                        raise ValueError("Raise action must specify an amount")
+                                    action = RaiseAction()
+                                    # if 'amount' in response_obj['action']:
+                                    #     action = RaiseAction(response_obj['action']['amount'])
+                                    # else:
+                                    #     raise ValueError("Raise action must specify an amount")
                                 else:
                                     raise ValueError(f'Invalid action verb: {action_verb}')
                             else:
@@ -519,7 +520,9 @@ class Player():
                 
                 if action in legal_actions:
                     return action()
-                game_log.append(f'{self.name} attempted illegal {action.__name__}')
+                print('response obj: ', response_obj)
+                print('action: ', action)
+                game_log.append(f'{self.name} attempted illegal {action.__repr__()}')
             except socket.timeout:
                 error_message = f'{self.name} ran out of time'
                 game_log.append(error_message)
