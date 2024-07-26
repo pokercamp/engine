@@ -86,7 +86,7 @@ class Runner():
                                     pips=info['pips'],
                                     stacks = info['stacks'],
                                     hands = info['hands'],
-                                    deck = None,
+                                    deck = [info['board']] if 'board' in info else None, 
                                     action_history = [],
                                     previous_state = None,
                                 )
@@ -97,7 +97,7 @@ class Runner():
                                     pips = info['pips'],
                                     stacks = info['stacks'],
                                     hands = info['hands'],
-                                    deck = None,
+                                    deck = [info['board']] if 'board' in info else None, 
                                     action_history = round_state.street if isinstance(round_state, RoundState) else round_state.previous_state.action_history,
                                     previous_state = round_state,
                                 )
@@ -112,7 +112,7 @@ class Runner():
                             elif action['verb'] == 'K':
                                 round_state = round_state.proceed(CheckAction())
                             elif action['verb'] == 'R':
-                                round_state = round_state.proceed(RaiseAction(action['amount']))
+                                round_state = round_state.proceed(RaiseAction(action))
                             else:
                                 print(f'WARN Bad action type: {message}')
                         case 'payoff':

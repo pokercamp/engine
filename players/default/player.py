@@ -1,7 +1,7 @@
 '''
 Simple example pokerbot, written in Python.
 '''
-from skeleton.actions import UpAction, DownAction
+from skeleton.actions import FoldAction, CallAction, CheckAction, RaiseAction
 from skeleton.states import GameState, TerminalState, RoundState
 from skeleton.states import NUM_ROUNDS, STARTING_STACK, ANTE, BET_SIZE
 from skeleton.bot import Bot
@@ -93,28 +93,11 @@ class Player(Bot):
         #    min_cost = min_raise - my_pip  # the cost of a minimum bet/raise
         #    max_cost = max_raise - my_pip  # the cost of a maximum bet/raise
         
-        print(round_state)
-        if round_state and round_state.hands:
-            my_hand = round_state.hands[active]
-            
-            if my_hand is None:
-                print(f'WARN Bad round_state: active {active}, hands {round_state.hands}')
-            
-            match my_hand:
-                case 0:
-                    return DownAction()
-                case 1:
-                    return random.choice([UpAction(), DownAction()])
-                case 2:
-                    return UpAction()
-                case _:
-                    print(f'WARN Bad round_state: unknown card {my_hand}')
-                    return DownAction()
+        # print(round_state)
+        if CheckAction in legal_actions:
+            return CheckAction()
         else:
-            print(f'WARN Bad round_state: {round_state}')
-        
-        return random.choice([UpAction(), DownAction()])
-
+            return FoldAction()
 
 if __name__ == '__main__':
     run_bot(Player(), parse_args())
