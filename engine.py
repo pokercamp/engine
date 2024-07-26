@@ -184,7 +184,7 @@ class RoundState(namedtuple('_RoundState', ['turn_number', 'street', 'pips', 'st
         return ret
     
     def public(self):
-        return {}
+        return {'community': self.deck.peek(self.street)}
 
     def legal_actions(self):
         '''
