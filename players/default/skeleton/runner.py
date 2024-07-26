@@ -112,7 +112,7 @@ class Runner():
                             elif action['verb'] == 'K':
                                 round_state = round_state.proceed(CheckAction())
                             elif action['verb'] == 'R':
-                                round_state = round_state.proceed(RaiseAction(action))
+                                round_state = round_state.proceed(RaiseAction())
                             else:
                                 print(f'WARN Bad action type: {message}')
                         case 'payoff':

@@ -34,32 +34,10 @@ class RoundState(namedtuple('_RoundState', ['turn_number', 'street', 'pips', 'st
     #     )
     
     def showdown(self):
-        assert self.pips[0] == self.pips[1]
-        hands = self.hands
-        print('hands: ', hands)
-        street = self.street
-        assert(street == 1)
-        # community = self.deck.peek(street)
-        print('deck', self.deck)
-        community = self.deck[0]
-        if hands[0] == community:
-            winner = 0
-        elif hands[1] == community:
-            winner = 1
-        elif hands[0] > hands[1]:
-            winner = 0
-        elif hands[1] > hands[0]:
-            winner = 1
-        else:
-            winner = None #Tie 
-
-        deltas = [0, 0]
-        if winner is not None:
-            loser = 1 - winner
-            deltas[winner] = self.pips[loser]
-            deltas[loser] = -self.pips[loser]
-        
-        return TerminalState(deltas, self)
+        # don't compute this on the player side; at this point we don't even
+        # have enough info to do so, but in the next few messages we'll get an
+        # info message with the final hands, and after that a payoff message
+        return self
     
     # def visible_hands(self, seat):
     #     ret = [None for _ in self.hands]

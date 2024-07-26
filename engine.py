@@ -445,7 +445,7 @@ class Player():
                     port = server_socket.getsockname()[1]
                     proc = subprocess.Popen(
                         self.commands['run'] + [str(port)],
-                        # stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                        stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                         cwd=self.path,
                     )
                     self.bot_subprocess = proc
@@ -575,8 +575,8 @@ class Player():
                 
                 if action in legal_actions:
                     return action()
-                print('response obj: ', response_obj)
-                print('action: ', action)
+                # print('response obj: ', response_obj)
+                # print('action: ', action)
                 game_log.append(f'{self.name} attempted illegal {action.__repr__()}')
             except socket.timeout:
                 error_message = f'{self.name} ran out of time'
