@@ -528,8 +528,10 @@ class Player():
                 else:
                     print(f'WARN Bad message format (expected json or list of json): {response}')
                 
-                if action in legal_actions:
-                    return action()
+                if any(
+                    isinstance(action, legal_action) for legal_action in legal_actions
+                ):
+                    return action
                 # print('response obj: ', response_obj)
                 # print('action: ', action)
                 game_log.append(f'{self.name} attempted illegal {action.__repr__()}')

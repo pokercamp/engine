@@ -196,7 +196,7 @@ class RoundState(namedtuple('_RoundState', ['turn_number', 'street', 'pips', 'st
                 stacks = new_stacks,
                 hands = self.hands,
                 deck = self.deck,
-                action_history = self.action_history + [RaiseAction()],
+                action_history = self.action_history + [RaiseAction()] if isinstance(self.action_history, list) else [RaiseAction()],
                 previous_state = self,
             )
         
