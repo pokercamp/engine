@@ -44,8 +44,8 @@ class Runner():
             raise ValueError(f'Invalid action type: {type(action)}')
 
         action_dict = {'type': 'action', 'action': {'verb': action_type}, 'player': seat}
-        if isinstance(action, RaiseAction):
-            action_dict['action']['amount'] = action.amount
+        # if isinstance(action, RaiseAction):
+        #     action_dict['action']['amount'] = action.amount
 
         self.socketfile.write(json.dumps(action_dict) + '\n')
         self.socketfile.flush()
