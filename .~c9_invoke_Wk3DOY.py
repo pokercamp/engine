@@ -179,14 +179,14 @@ def message(type, **kwargs):
     result.update(kwargs)
     return result
 
-class RoundState(namedtuple('_RoundState', ['turn_number', 'street', 'player_to_act', 'pips', 'stacks', 'hands', 'deck', 'n_ranks', 'n_streets', 'action_history', 'previous_state'])):
+class RoundState(namedtuple('_RoundState', ['turn_number', 'street', 'player_to_act', 'pips', 'stacks', 'hands', 'deck', 'action_history', 'previous_state'])):
     @staticmethod
-    def new(duplicate_file=None, n_ranks=13, n_streets=4, starting_stack=STARTING_STACK, ):
+    def new(duplicate_file, n_ranks=13, n_community_cards=5, starting_stack=STARTING_STACK, ):
         assert n_ranks >= 3
         deck = XDeck(duplicate_file = duplicate_file, n_ranks = n_ranks)
         hands = [deck.deal(2), deck.deal(2)]
         
-        assert n_streets in {1, 2, 3, 4}
+        assert n_community_cards in {0, 3, 4, 5}
         
         assert starting_stack >= BIG_BLIND
         pips = [SMALL_BLIND, BIG_BLIND]
@@ -200,8 +200,8 @@ class RoundState(namedtuple('_RoundState', ['turn_number', 'street', 'player_to_
             stacks=stacks,
             hands=hands,
             deck=deck,
-            n_ranks = n_ranks,
-            n_streets = n_streets,
+            n_ranks=n_ranks,
+            n_community_cards=n_community_cards,
             action_history=[],
             previous_state=None,
         )
@@ -299,9 +299,9 @@ class RoundState(namedtuple('_RoundState', ['turn_number', 'street', 'player_to_
         )
 
     def proceed_street(self):
-        assert self.street <= self.n_streets
+        assert self.street <= 3
         
-        if self.street == self.n_streets - 1:
+        if self.street == 3:
             return self.showdown()
         
         return RoundState(
@@ -312,8 +312,6 @@ class RoundState(namedtuple('_RoundState', ['turn_number', 'street', 'player_to_
             stacks=self.stacks,
             hands=self.hands,
             deck=self.deck,
-            n_ranks=self.n_ranks,
-            n_streets=self.n_streets,
             action_history=self.action_history,
             previous_state=self,
         )
@@ -340,8 +338,6 @@ class RoundState(namedtuple('_RoundState', ['turn_number', 'street', 'player_to_
                     stacks=self.stacks,
                     hands=self.hands,
                     deck=self.deck,
-                    n_ranks=self.n_ranks,
-                    n_streets=self.n_streets,
                     action_history=self.action_history + [action],
                     previous_state=self,
                 ),
@@ -356,8 +352,6 @@ class RoundState(namedtuple('_RoundState', ['turn_number', 'street', 'player_to_
                 stacks=self.stacks,
                 hands=self.hands,
                 deck=self.deck,
-                n_ranks=self.n_ranks,
-                n_streets=self.n_streets,
                 action_history=self.action_history + [action],
                 previous_state=self,
             )
@@ -367,10 +361,10 @@ class RoundState(namedtuple('_RoundState', ['turn_number', 'street', 'player_to_
             amount = self.pips[inactive] - self.pips[active]
             assert amount <= self.stacks[active]
             
-            pips = self.pips.copy()
+            pips = self.pips
             pips[active] += amount
             
-            stacks = self.stacks.copy()
+            stacks = self.stacks
             stacks[active] -= amount
             
             if self.street == 0 and self.turn_number == 0:
@@ -383,8 +377,6 @@ class RoundState(namedtuple('_RoundState', ['turn_number', 'street', 'player_to_
                     stacks=stacks,
                     hands=self.hands,
                     deck=self.deck,
-                    n_ranks=self.n_ranks,
-                    n_streets=self.n_streets,
                     action_history=self.action_history + [action],
                     previous_state=self,
                 )
@@ -398,8 +390,6 @@ class RoundState(namedtuple('_RoundState', ['turn_number', 'street', 'player_to_
                     stacks=stacks,
                     hands=self.hands,
                     deck=self.deck,
-                    n_ranks=self.n_ranks,
-                    n_streets=self.n_streets,
                     action_history=self.action_history + [action],
                     previous_state=self,
                 ).proceed_street()
@@ -407,16 +397,14 @@ class RoundState(namedtuple('_RoundState', ['turn_number', 'street', 'player_to_
         if isinstance(action, RaiseAction):
             assert self.pips[inactive] >= self.pips[active]
             (min_raise, max_raise) = self.raise_bounds()
-            if not(min_raise <= action.size and action.size <= max_raise):
-                print(f'action={action}; raise_bounds=({min_raise}, {max_raise})')
             assert min_raise <= action.size and action.size <= max_raise
             amount = self.pips[inactive] - self.pips[active] + action.size
             assert amount <= self.stacks[active]
             
-            pips = self.pips.copy()
+            pips = self.pips
             pips[active] += amount
             
-            stacks = self.stacks.copy()
+            stacks = self.stacks
             stacks[active] -= amount
             
             return RoundState(
@@ -427,8 +415,6 @@ class RoundState(namedtuple('_RoundState', ['turn_number', 'street', 'player_to_
                 stacks=stacks,
                 hands=self.hands,
                 deck=self.deck,
-                n_ranks=self.n_ranks,
-                n_streets=self.n_streets,
                 action_history=self.action_history + [action],
                 previous_state=self,
             )
@@ -680,10 +666,10 @@ class Match():
         secrets=None,
         capture=True,
         n_ranks=13,
-        n_streets=4,
+        n_community_cards=5,
         starting_stack=STARTING_STACK,
     ):
-        global PLAYER_1_NAME, PLAYER_1_PATH, PLAYER_2_NAME, LOGS_PATH, PLAYER_2_PATH, NUM_ROUNDS
+        global PLAYER_1_NAME, PLAYER_1_PATH, PLAYER_2_NAME, LOGS_PATH, PLAYER_2_PATH, NUM_ROUNDS, STARTING_STACK
         if p1 is not None:
             PLAYER_1_NAME = p1[0]
             PLAYER_1_PATH = p1[1]
@@ -699,9 +685,9 @@ class Match():
         self.secrets = None if secrets is None else secrets.strip().split(',')
         assert self.secrets is None or len(self.secrets) == 2
         self.capture = capture
-        self.n_ranks = int(n_ranks)
-        self.n_streets = int(n_streets)
-        self.starting_stack = int(starting_stack)
+        self.n_ranks = n_ranks
+        self.n_community_cards = n_community_cards
+        STARTING_STACK = starting_stack
         
         self.log = ['Poker Camp Game Engine - ' + PLAYER_1_NAME + ' vs ' + PLAYER_2_NAME]
 
@@ -717,10 +703,6 @@ class Match():
                 player.append(message('info', info={
                         'seat': seat,
                         'hands': round_state.visible_hands(seat, for_json=True),
-                        'street': round_state.street,
-                        'n_ranks': round_state.n_ranks,
-                        'n_streets': round_state.n_streets,
-                        'starting_stack': round_state.stacks[0] + round_state.pips[0],
                         **({'secret': self.secrets[seat]} if self.secrets else {}),
                         'new_game': True,
                 }))
@@ -736,7 +718,6 @@ class Match():
                 player.append(message('info', info = {
                     'seat': seat,
                     'hands': round_state.visible_hands(seat, for_json=True),
-                    'street': round_state.street,
                     'board': [card_to_json(card) for card in board],
                 }))
 
@@ -784,7 +765,7 @@ class Match():
         round_state = RoundState.new(
             duplicate_file = self.duplicate_file,
             n_ranks = self.n_ranks,
-            n_streets = self.n_streets,
+            n_community_cards = self.n_community_cards,
             starting_stack = self.starting_stack,
         )
         while not isinstance(round_state, TerminalState):
@@ -854,7 +835,7 @@ if __name__ == '__main__':
     parser.add_argument("--capture", default=True, action=argparse.BooleanOptionalAction, help='Capture player outputs and write them to log files')
 
     parser.add_argument("--ranks", default=13, metavar='INT', help='number of ranks in deck')
-    parser.add_argument("--streets", default=4, metavar='INT', help='number of streets, including preflop as 1')
+    parser.add_argument("--community-cards", default=5, metavar='INT', help='number of community cards (0, 3, 4, or 5), with a corresponding number of streets of betting')
     parser.add_argument("--stacks", default=200, metavar='INT', help='players starting stacks for each round')
 
     args = parser.parse_args()
@@ -869,7 +850,7 @@ if __name__ == '__main__':
         secrets = args.secrets,
         capture = args.capture,
         n_ranks = args.ranks,
-        n_streets = args.streets,
+        n_community_cards = args.community,
         starting_stack = args.stacks,
     ).run()
     

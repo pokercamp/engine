@@ -1,13 +1,21 @@
 '''
 Example solver. Implements a kind of crude Counterfactual Regret Minimization.
 '''
+import argparse
+import eval7
+
 from skeleton.base_solver import BaseSolver
-from skeleton.engine import RoundState
+from skeleton.engine import RoundState, CallAction, RaiseAction
 from skeleton.runner import parse_args, run_solver
 
 class Solver(BaseSolver):
-    def __init__(self):
+    def __init__(self, n_ranks, n_streets, starting_stack):
+        self.n_ranks = n_ranks
+        self.n_streets = n_streets
+        self.starting_stack = starting_stack
         self.regrets = {}
+        self.strategy_sums = {}
+        self.infoset_visit_count = {}
     
     def handle_new_iteration(self, _):
         '''
@@ -20,7 +28,6 @@ class Solver(BaseSolver):
         '''
         Called when iteration is over.
         '''
-        
         pass
     
     def get_root(self, _):
@@ -28,9 +35,13 @@ class Solver(BaseSolver):
         Returns the RoundState to start a new iteration at.
         '''
         
-        return RoundState.new()
+        return RoundState.new(
+            n_ranks=self.n_ranks,
+            n_streets=self.n_streets,
+            starting_stack=self.starting_stack,
+        )
     
-    def determine_infoset(self, *, active, public, hands, history):
+    def determine_infoset(self, state):
         '''
         Called to ask for the canonical name of an infoset.
         
@@ -38,16 +49,35 @@ class Solver(BaseSolver):
         infoset.
         '''
         
-        return f'(P{active+1}){public}{hands}{history}'
+        hand = state.hands[0] or state.hands[1]
+        suited = (hand[0].suit == hand[1].suit)
+        hand = ''.join([eval7.ranks[i] for i in sorted([card.rank for card in hand], reverse=True)])
+        
+        if state.street == 0:
+            return f'P{state.player_to_act+1}:{state.street}:{hand}{"s" if suited else "o"}{state.action_history}'
+        
+        return f'P{state.player_to_act+1}:{state.street}:{hand}{state.public()['community']}{state.action_history}'
     
-    def sample_actions(self, infoset, legal_actions):
+    def sample_actions(self, infoset, legal_actions, raise_bounds):
         '''
         legal_actions is a list of types; this function should give one or more
         instances of each type (it might be 'or more' if you need to try
         different bet sizes...)
         '''
         
-        return [action() for action in legal_actions]
+        raise_sizes = []
+        
+        if raise_bounds[1] > 0:
+            size = raise_bounds[0]
+            while size <= raise_bounds[1] and len(raise_sizes) < 10:
+                raise_sizes.append(int(size))
+                size *= 1.5
+            if raise_sizes[-1] != raise_bounds[1]:
+                raise_sizes.append(raise_bounds[1])
+        return (
+            [action() for action in legal_actions if action != RaiseAction]
+            + ([RaiseAction(size) for size in raise_sizes] if RaiseAction in legal_actions else [])
+        )
     
     def get_sampling_policy(self, infoset, *, iteration):
         '''
@@ -57,7 +87,10 @@ class Solver(BaseSolver):
         Currently supported: "expand_all", "sample"
         '''
         
-        return 'expand_all'
+        if (infoset[0:2] == 'P1') ^ (iteration % 2 == 0):
+            return 'sample'
+        else:
+            return 'expand_all'
     
     def handle_new_samples(
         self,
@@ -86,7 +119,7 @@ class Solver(BaseSolver):
                 
                 # if regret > 0:
                 #     print(f'add {max(regret, 0)} to {action} at {infoset}; EV {sample_list[0]} > {use_ev}')
-                self.regrets[infoset][action] += max(0, regret)
+                self.regrets[infoset][action] = max(0, self.regrets[infoset][action] + regret)
     
     def get_training_strategy_probabilities(self, infoset, legal_actions):
         '''
@@ -98,26 +131,57 @@ class Solver(BaseSolver):
         if infoset not in self.regrets or total_regret == 0:
             n_legal_actions = len(legal_actions)
             return {action : 1 / n_legal_actions for action in legal_actions}
-        return {
+        probabilities = {
             action : value / total_regret
             for action, value
             in self.regrets[infoset].items()
         }
+        
+        if infoset not in self.strategy_sums:
+            self.strategy_sums[infoset] = {action: 0 for action in legal_actions}
+            self.infoset_visit_count[infoset] = 0
+        
+        self.infoset_visit_count[infoset] += 1
+        
+        if self.infoset_visit_count[infoset] > 5:
+            for action, prob in probabilities.items():
+                self.strategy_sums[infoset][action] += prob
+            
+        return probabilities
     
     def get_final_strategy_probabilities(self):
         '''
         Called to ask for the final probabilities to report.
         
-        This might be different from get_training_probabilites() if you wanted
-        to average over multiple recent iterations.
+        This returns the average of all training probabilities for each infoset.
         '''
+        final_probabilities = {}
         
-        return {
-            infoset : self.get_training_strategy_probabilities(infoset, [None])
-            for infoset
-            in self.regrets.keys()
-        }
+        for infoset, action_sums in self.strategy_sums.items():
+            visit_count = self.infoset_visit_count[infoset] - 5
+            final_probabilities[infoset] = {
+                action: sum_prob / visit_count
+                for action, sum_prob in action_sums.items()
+                if visit_count > 0
+            }
+        
+        return final_probabilities
 
 # usage: python3 solver.py --iter ITERATIONS
 if __name__ == '__main__':
-    run_solver(Solver(), parse_args())
+    parser = argparse.ArgumentParser(description="Run the poker solver")
+    parser.add_argument('--iter', type=int, required=True, help="Number of iterations")
+    parser.add_argument('--ranks', type=int, default=5, metavar='INT', help="Number of ranks")
+    parser.add_argument('--streets', type=int, default=4, metavar='INT', help="Number of streets")
+    parser.add_argument('--starting-stack', type=int, default=200, metavar='INT', help="Starting stack size")
+    
+    args = parser.parse_args()
+    
+    run_solver(
+        Solver(
+            n_ranks=args.ranks,
+            n_streets=args.streets,
+            starting_stack=args.starting_stack,
+        ),
+        args,
+    )

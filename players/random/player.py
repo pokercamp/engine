@@ -1,9 +1,9 @@
 '''
 Simple example pokerbot, written in Python.
 '''
-from skeleton.actions import UpAction, DownAction
+from skeleton.actions import FoldAction, CheckAction, CallAction, RaiseAction
 from skeleton.states import GameState, TerminalState, RoundState
-from skeleton.states import NUM_ROUNDS, STARTING_STACK, ANTE, BET_SIZE
+from skeleton.states import NUM_ROUNDS, STARTING_STACK, SMALL_BLIND, BIG_BLIND
 from skeleton.bot import Bot
 from skeleton.runner import parse_args, run_bot
 
@@ -92,7 +92,29 @@ class Player(Bot):
         #    min_raise, max_raise = round_state.raise_bounds()  # the smallest and largest numbers of chips for a legal bet/raise
         #    min_cost = min_raise - my_pip  # the cost of a minimum bet/raise
         #    max_cost = max_raise - my_pip  # the cost of a maximum bet/raise
-        return random.choice([UpAction(), DownAction()])
+        
+        if random.uniform(0, 1) < 0.33:
+            if RaiseAction not in legal_actions:
+                return CallAction()
+            
+            raise_bounds = round_state.raise_bounds()
+            raise_fraction_of_pot = (0.25 + 0.5 * random.uniform(0, 1))
+            raise_size = int(round_state.pips[1-active] * 2 * raise_fraction_of_pot)
+            raise_size = max(raise_size, raise_bounds[0])
+            raise_size = min(raise_size, raise_bounds[1])
+            
+            return RaiseAction(raise_size)
+        
+        if CheckAction in legal_actions:
+            return CheckAction()
+        
+        # else call or fold, proportionally to pot odds
+        chips_to_call = round_state.pips[1-active] - round_state.pips[active]
+        pot_after_calling = round_state.pips[1-active] * 2
+        if random.uniform(0,1) > chips_to_call / pot_after_calling:
+            return CallAction()
+        else:
+            return FoldAction()
 
 
 if __name__ == '__main__':

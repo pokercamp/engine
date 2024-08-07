@@ -1,9 +1,9 @@
 '''
 Simple example pokerbot, written in Python.
 '''
-from skeleton.actions import UpAction, DownAction
+from skeleton.actions import FoldAction, CheckAction, CallAction, RaiseAction
 from skeleton.states import GameState, TerminalState, RoundState
-from skeleton.states import NUM_ROUNDS, STARTING_STACK, ANTE, BET_SIZE
+from skeleton.states import NUM_ROUNDS, STARTING_STACK, SMALL_BLIND, BIG_BLIND
 from skeleton.bot import Bot
 from skeleton.runner import parse_args, run_bot
 
@@ -93,27 +93,16 @@ class Player(Bot):
         #    min_cost = min_raise - my_pip  # the cost of a minimum bet/raise
         #    max_cost = max_raise - my_pip  # the cost of a maximum bet/raise
         
-        print(round_state)
-        if round_state and round_state.hands:
-            my_hand = round_state.hands[0] or round_state.hands[1]
-            
-            if not my_hand:
-                print(f'WARN Bad round_state: hands {round_state.hands}')
-            
-            match my_hand:
-                case 0:
-                    return DownAction()
-                case 1:
-                    return random.choice([UpAction(), DownAction()])
-                case 2:
-                    return UpAction()
-                case _:
-                    print(f'WARN Bad round_state: unknown card {my_hand}')
-                    return DownAction()
-        else:
-            print(f'WARN Bad round_state: {round_state}')
+        if CheckAction in legal_actions:
+            return CheckAction()
         
-        return random.choice([UpAction(), DownAction()])
+        if FoldAction in legal_actions:
+            return FoldAction()
+        
+        if CallAction in legal_actions:
+            return CallAction()
+        
+        raise ValueError(f'Unexpected legal_actions={legal_actions} in round_state={round_state}')
 
 
 if __name__ == '__main__':

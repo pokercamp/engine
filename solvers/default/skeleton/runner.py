@@ -20,18 +20,13 @@ def get_ev(solver, state, *, iteration):
         return -state.deltas[active]
     
     active = state.turn_number % 2
-    infoset = solver.determine_infoset(
-        active=active,
-        public=state.public(),
-        hands=state.visible_hands(active),
-        history=state.action_history,
-    )
+    infoset = solver.determine_infoset(state)
     sampling_policy = solver.get_sampling_policy(infoset, iteration=iteration)
     
     samples = {
         action : []
         for action
-        in solver.sample_actions(infoset, state.legal_actions())
+        in solver.sample_actions(infoset, state.legal_actions(), state.raise_bounds())
     }
     
     if (sampling_policy == 'sample'):
@@ -82,9 +77,10 @@ def run_solver(solver, args):
     
     print(f'Final probabilities:\n{
         "\n".join(sorted([
-            f"{infoset: <26}: {value}"
+            f'{infoset: <11}: '+str({action: f'{int(prob*100)}%' for action, prob in value.items() if prob > 0.01})
             for infoset, value
             in solver.get_final_strategy_probabilities().items()
+            if len(infoset) < 60 and infoset[0:5] == "P1:0:" and infoset[-2:] == "[]"
         ]))
     }')
     

@@ -4,10 +4,12 @@ The infrastructure for interacting with the engine.
 import argparse
 import json
 import socket
-from .actions import UpAction, DownAction
+from .actions import FoldAction, CheckAction, CallAction, RaiseAction
 from .states import GameState, TerminalState, RoundState
-from .states import STARTING_STACK, ANTE, BET_SIZE
+from .states import STARTING_STACK, SMALL_BLIND, BIG_BLIND
 from .bot import Bot
+
+DECODE = {'Fold': FoldAction, 'Check': CheckAction, 'Call': CallAction, 'Raise': RaiseAction}
 
 class Runner():
     '''
@@ -34,7 +36,10 @@ class Runner():
         '''
         self.socketfile.write(json.dumps({
             'type': 'action',
-            'action': {'verb': 'U' if isinstance(action, UpAction) else 'D'},
+            'action': {
+                'verb': action.verb,
+                **({'size': action.size} if isinstance(action, RaiseAction) else {})
+            },
             'player': seat,
         }) + '\n')
         self.socketfile.flush()
@@ -62,34 +67,33 @@ class Runner():
                         case 'info':
                             info = message['info']
                             seat = int(info['seat'])
-                            if 'hands' not in info:
-                                info['hands'] = [None, None]
-                            if 'pips' not in info:
-                                info['pips'] = [ANTE, ANTE]
-                            if 'stacks' not in info:
-                                info['stacks'] = [STARTING_STACK - ANTE, STARTING_STACK - ANTE]
                             new_game = 'new_game' in info and info['new_game']
+                            last_nonterminal_state = round_state if isinstance(round_state, RoundState) or round_state is None else round_state.previous_state
                             
-                            if 'new_game' in info and info['new_game']:
+                            if new_game:
+                                starting_stack = info['starting_stack'] if 'starting_stack' in info else STARTING_STACK
                                 round_state = RoundState(
-                                    turn = 0,
+                                    turn_number = 0,
                                     street = 0,
-                                    pips = info['pips'],
-                                    stacks = info['stacks'],
-                                    hands = info['hands'],
-                                    deck = None,
+                                    player_to_act = 0,
+                                    pips = info['pips'] if 'pips' in info else [SMALL_BLIND, BIG_BLIND],
+                                    stacks = info['stacks'] if 'stacks' in info else [starting_stack - SMALL_BLIND, starting_stack - BIG_BLIND],
+                                    hands = info['hands'] if 'hands' in info else [None, None],
+                                    deck = info['community'] if 'community' in info else [],
+                                    n_ranks = info['n_ranks'] if 'n_ranks' in info else 13,
+                                    n_streets = info['n_streets'] if 'n_streets' in info else 4,
                                     action_history = [],
                                     previous_state = None,
                                 )
                             else:
                                 round_state = RoundState(
-                                    turn = round_state.turn if isinstance(round_state, RoundState) else round_state.previous_state.turn,
-                                    street = round_state.street if isinstance(round_state, RoundState) else round_state.previous_state.street,
-                                    pips = info['pips'],
-                                    stacks = info['stacks'],
-                                    hands = info['hands'],
-                                    deck = None,
-                                    action_history = round_state.street if isinstance(round_state, RoundState) else round_state.previous_state.action_history,
+                                    turn_number = last_nonterminal_state.turn_number,
+                                    street = last_nonterminal_state.street,
+                                    player_to_act = last_nonterminal_state.player_to_act,
+                                    **{k: info[k] if k in info else getattr(last_nonterminal_state, k) for k in ['pips', 'stacks', 'hands', ]},
+                                    deck = info['community'] if 'community' in info else last_nonterminal_state.deck,
+                                    **{k: info[k] if k in info else getattr(last_nonterminal_state, k) for k in ['n_ranks', 'n_streets', ]},
+                                    action_history = last_nonterminal_state.action_history,
                                     previous_state = round_state,
                                 )
                             
@@ -97,13 +101,19 @@ class Runner():
                                 self.pokerbot.handle_new_round(game_state, round_state, seat)
                         
                         case 'action':
-                            match message['action']['verb']:
-                                case 'U':
-                                    round_state = round_state.proceed(UpAction())
-                                case 'D':
-                                    round_state = round_state.proceed(DownAction())
-                                case _:
-                                    print(f'WARN Bad action type: {message}')
+                            if message['action']['verb'] in DECODE:
+                                if message['action']['verb'] == 'Raise':
+                                    (min_raise, max_raise) = round_state.raise_bounds()
+                                    if min_raise <= message['action']['size'] and message['action']['size'] <= max_raise:
+                                        action = RaiseAction(message['action']['size'])
+                                    else:
+                                        print(f'WARN Bad raise size from game server: {message} but raise bounds are {round_state.raise_bounds()}')
+                                        action = CallAction()
+                                else:
+                                    action = DECODE[message['action']['verb']]()
+                            else:
+                                print(f'WARN Bad action type: {message}')
+                            round_state = round_state.proceed(action)
                         
                         case 'payoff':
                             delta = message['payoff']
@@ -122,6 +132,10 @@ class Runner():
                 except KeyError as e:
                     print(f'WARN Message missing required field "{e}": {message}')
                     continue
+            # if not round_state.player_to_act == seat:
+            #     print(round_state)
+            #     print(f'seat={seat}')
+            assert round_state.player_to_act == seat
             action = self.pokerbot.get_action(game_state, round_state, seat)
             self.send(action, seat)
 
