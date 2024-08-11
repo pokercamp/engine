@@ -855,7 +855,7 @@ if __name__ == '__main__':
 
     parser.add_argument("--ranks", default=13, metavar='INT', help='number of ranks in deck')
     parser.add_argument("--streets", default=4, metavar='INT', help='number of streets, including preflop as 1')
-    parser.add_argument("--stacks", default=200, metavar='INT', help='players starting stacks for each round')
+    parser.add_argument("--stacks", default=STARTING_STACK, metavar='INT', help='players starting stacks for each round')
 
     args = parser.parse_args()
     
