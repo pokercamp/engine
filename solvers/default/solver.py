@@ -49,14 +49,14 @@ class Solver(BaseSolver):
         infoset.
         '''
         
-        hand = state.hands[0] or state.hands[1]
+        hand = state.hands[state.player_to_act]
         suited = (hand[0].suit == hand[1].suit)
         hand = ''.join([eval7.ranks[i] for i in sorted([card.rank for card in hand], reverse=True)])
         
         if state.street == 0:
             return f'P{state.player_to_act+1}:{state.street}:{hand}{"s" if suited else "o"}{state.action_history}'
         
-        return f'P{state.player_to_act+1}:{state.street}:{hand}{state.public()['community']}{state.action_history}'
+        return f'P{state.player_to_act+1}:{state.street}:{hand}{state.public()["community"]}{state.action_history}'
     
     def sample_actions(self, infoset, legal_actions, raise_bounds):
         '''
@@ -172,8 +172,8 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="Run the poker solver")
     parser.add_argument('--iter', type=int, required=True, help="Number of iterations")
     parser.add_argument('--ranks', type=int, default=5, metavar='INT', help="Number of ranks")
-    parser.add_argument('--streets', type=int, default=4, metavar='INT', help="Number of streets")
-    parser.add_argument('--starting-stack', type=int, default=200, metavar='INT', help="Starting stack size")
+    parser.add_argument('--streets', type=int, default=2, metavar='INT', help="Number of streets")
+    parser.add_argument('--starting-stack', type=int, default=20, metavar='INT', help="Starting stack size")
     
     args = parser.parse_args()
     

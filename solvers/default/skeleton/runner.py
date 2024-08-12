@@ -75,12 +75,13 @@ def run_solver(solver, args):
         
         solver.handle_iteration_over(iteration)
     
-    print(f'Final probabilities:\n{
+    print('Final probabilities:')
+    print(
         "\n".join(sorted([
             f'{infoset: <11}: '+str({action: f'{int(prob*100)}%' for action, prob in value.items() if prob > 0.01})
             for infoset, value
             in solver.get_final_strategy_probabilities().items()
             if len(infoset) < 60 and infoset[0:5] == "P1:0:" and infoset[-2:] == "[]"
         ]))
-    }')
+    )
     
