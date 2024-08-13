@@ -32,17 +32,6 @@ class RoundState(namedtuple('_RoundState', ['turn_number', 'street', 'player_to_
         # have enough info to do so, but in the next few messages we'll get an
         # info message with the final hands, and after that a payoff message
         return self
-    
-    def visible_hands(self, seat, *, for_json=False):
-        ret = [None for _ in self.hands]
-        if for_json:
-            ret[seat] = [card_to_json(card) for card in self.hands[seat]]
-        else:
-            ret[seat] = self.hands[seat]
-        return ret
-    
-    def public(self):
-        return None
 
     def legal_actions(self):
         active = self.player_to_act
